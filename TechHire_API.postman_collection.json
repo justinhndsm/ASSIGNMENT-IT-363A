@@ -1,0 +1,380 @@
+{
+  "info": {
+    "_postman_id": "techhire-api-collection-v1",
+    "name": "TechHire API",
+    "description": "Production-ready REST API for TechHire — a freemium job board.\n\nThis collection covers four canonical request scenarios:\n1. Obtain a JWT token (Auth Request)\n2. Browse jobs as an unauthenticated user (masked data)\n3. Browse jobs as an authenticated Premium user (full data)\n4. Fetch a single job posting by ID\n\nPre-requisite: Run `python manage.py seed_jobs` and create at least one Premium user via the Django admin or shell before running this collection.\n\nBase URL variable: {{base_url}} — set to http://127.0.0.1:8000 for local dev.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string",
+      "description": "Root URL of the TechHire API server."
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by the 'Obtain JWT Token' request's test script."
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by the 'Obtain JWT Token' request's test script."
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth — Obtain JWT Token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"premium_user\",\n  \"password\": \"securepassword123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/token/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "token", ""]
+        },
+        "description": "## Auth Request — Obtain JWT Token\n\nExchanges username + password for a short-lived **access token** (60 minutes) and a long-lived **refresh token** (7 days).\n\n**Expected response (200 OK):**\n```json\n{\n  \"access\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"refresh\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n}\n```\n\nThe test script automatically stores both tokens as collection variables (`access_token`, `refresh_token`). Subsequent requests in this collection use `{{access_token}}`."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.access) {",
+              "    pm.collectionVariables.set('access_token', json.access);",
+              "}",
+              "if (json.refresh) {",
+              "    pm.collectionVariables.set('refresh_token', json.refresh);",
+              "}",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Response contains access token', () => pm.expect(json.access).to.be.a('string'));",
+              "pm.test('Response contains refresh token', () => pm.expect(json.refresh).to.be.a('string'));"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 — Token Pair",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"access\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzAwMDAwMDYwLCJ1c2VyX2lkIjoyfQ.example\",\n  \"refresh\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTcwMDYwNDgwMCwidXNlcl9pZCI6Mn0.example\"\n}",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "401 — Invalid Credentials",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"detail\": \"No active account found with the given credentials\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "2. Public — List Jobs (Unauthenticated, Masked)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/jobs/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "jobs", ""],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "description": "Page number (10 results per page).",
+              "disabled": true
+            },
+            {
+              "key": "search",
+              "value": "python",
+              "description": "Full-text search across title and description.",
+              "disabled": true
+            },
+            {
+              "key": "location",
+              "value": "Remote",
+              "description": "Exact location filter.",
+              "disabled": true
+            },
+            {
+              "key": "ordering",
+              "value": "-created_at",
+              "description": "Sort by created_at descending (newest first). Use created_at for ascending.",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "## Public Request — Masked Data\n\nFetches the paginated list of job postings **without an Authorization header**.\n\nAll users can see `title` and `description`. The three premium fields are masked with the sentinel value `\"🔒 Premium Feature\"`:\n- `company_name`\n- `salary_range`\n- `application_link`\n\n**Expected response (200 OK):**\n```json\n{\n  \"count\": 5,\n  \"next\": null,\n  \"previous\": null,\n  \"results\": [\n    {\n      \"id\": 1,\n      \"title\": \"Senior Python Engineer\",\n      \"description\": \"We are looking for an experienced Python engineer...\",\n      \"location\": \"San Francisco, CA\",\n      \"company_name\": \"🔒 Premium Feature\",\n      \"salary_range\": \"🔒 Premium Feature\",\n      \"application_link\": \"🔒 Premium Feature\",\n      \"created_at\": \"2026-03-27T12:00:00Z\"\n    }\n  ]\n}\n```\n\nThe same masking applies to authenticated **Basic** members."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Response is paginated', () => {",
+              "    pm.expect(json).to.have.property('count');",
+              "    pm.expect(json).to.have.property('results');",
+              "});",
+              "if (json.results && json.results.length > 0) {",
+              "    const job = json.results[0];",
+              "    pm.test('title is visible', () => pm.expect(job.title).to.be.a('string').and.not.empty);",
+              "    pm.test('description is visible', () => pm.expect(job.description).to.be.a('string').and.not.empty);",
+              "    pm.test('company_name is masked', () => pm.expect(job.company_name).to.equal('🔒 Premium Feature'));",
+              "    pm.test('salary_range is masked', () => pm.expect(job.salary_range).to.equal('🔒 Premium Feature'));",
+              "    pm.test('application_link is masked', () => pm.expect(job.application_link).to.equal('🔒 Premium Feature'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 — Masked List",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"count\": 5,\n  \"next\": null,\n  \"previous\": null,\n  \"results\": [\n    {\n      \"id\": 1,\n      \"title\": \"Senior Python Engineer\",\n      \"description\": \"We are looking for an experienced Python engineer to join our platform team...\",\n      \"location\": \"San Francisco, CA\",\n      \"company_name\": \"🔒 Premium Feature\",\n      \"salary_range\": \"🔒 Premium Feature\",\n      \"application_link\": \"🔒 Premium Feature\",\n      \"created_at\": \"2026-03-27T12:00:00Z\"\n    }\n  ]\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "3. Premium — List Jobs (Authenticated, Full Data)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "description": "JWT access token for a Premium-tier user. Populated by request #1."
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/jobs/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "jobs", ""],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "disabled": true
+            },
+            {
+              "key": "search",
+              "value": "python",
+              "disabled": true
+            },
+            {
+              "key": "location",
+              "value": "Remote",
+              "disabled": true
+            },
+            {
+              "key": "ordering",
+              "value": "-created_at",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "## Premium Request — Full Data\n\nIdentical endpoint to Request #2, but now the `Authorization: Bearer <token>` header is present and the token belongs to a **Premium** user.\n\nAll fields are returned unmasked:\n- `company_name` → actual company name\n- `salary_range` → actual salary band\n- `application_link` → actual URL\n\n**Expected response (200 OK):**\n```json\n{\n  \"count\": 5,\n  \"next\": null,\n  \"previous\": null,\n  \"results\": [\n    {\n      \"id\": 1,\n      \"title\": \"Senior Python Engineer\",\n      \"description\": \"We are looking for an experienced Python engineer...\",\n      \"location\": \"San Francisco, CA\",\n      \"company_name\": \"Anthropic\",\n      \"salary_range\": \"$160,000 – $220,000\",\n      \"application_link\": \"https://example.com/jobs/1\",\n      \"created_at\": \"2026-03-27T12:00:00Z\"\n    }\n  ]\n}\n```\n\n**If the token belongs to a Basic user**, premium fields are still masked despite authentication."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Response is paginated', () => pm.expect(json).to.have.property('results'));",
+              "if (json.results && json.results.length > 0) {",
+              "    const job = json.results[0];",
+              "    pm.test('title is visible', () => pm.expect(job.title).to.be.a('string').and.not.empty);",
+              "    pm.test('company_name is unmasked', () => pm.expect(job.company_name).to.not.equal('🔒 Premium Feature'));",
+              "    pm.test('salary_range is unmasked', () => pm.expect(job.salary_range).to.not.equal('🔒 Premium Feature'));",
+              "    pm.test('application_link is unmasked', () => pm.expect(job.application_link).to.not.equal('🔒 Premium Feature'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 — Full Data",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"count\": 5,\n  \"next\": null,\n  \"previous\": null,\n  \"results\": [\n    {\n      \"id\": 1,\n      \"title\": \"Senior Python Engineer\",\n      \"description\": \"We are looking for an experienced Python engineer to join our platform team...\",\n      \"location\": \"San Francisco, CA\",\n      \"company_name\": \"Anthropic\",\n      \"salary_range\": \"$160,000 – $220,000\",\n      \"application_link\": \"https://example.com/jobs/1\",\n      \"created_at\": \"2026-03-27T12:00:00Z\"\n    }\n  ]\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "4. Detail — Single Job Posting",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}",
+            "description": "Optional. Omit to test masked response; include to test full response for Premium users.",
+            "disabled": false
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/jobs/1/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "jobs", "1", ""]
+        },
+        "description": "## Detail Request — Single Job Record\n\nFetches a single `JobPosting` by its primary key (`/api/jobs/<id>/`).\n\nThe same field-level masking applies:\n- **No token / Basic token** → premium fields masked\n- **Premium token** → all fields revealed\n\n**Expected response with Premium token (200 OK):**\n```json\n{\n  \"id\": 1,\n  \"title\": \"Senior Python Engineer\",\n  \"description\": \"We are looking for an experienced Python engineer to join our platform team...\",\n  \"location\": \"San Francisco, CA\",\n  \"company_name\": \"Anthropic\",\n  \"salary_range\": \"$160,000 – $220,000\",\n  \"application_link\": \"https://example.com/jobs/1\",\n  \"created_at\": \"2026-03-27T12:00:00Z\"\n}\n```\n\n**404 response** if the ID does not exist:\n```json\n{\"detail\": \"No JobPosting matches the given query.\"}\n```"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK or 404', () => {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "if (pm.response.code === 200) {",
+              "    const job = pm.response.json();",
+              "    pm.test('Job has id', () => pm.expect(job.id).to.be.a('number'));",
+              "    pm.test('Job has title', () => pm.expect(job.title).to.be.a('string').and.not.empty);",
+              "    pm.test('Job has description', () => pm.expect(job.description).to.be.a('string').and.not.empty);",
+              "    pm.test('Job has location', () => pm.expect(job.location).to.be.a('string'));",
+              "    pm.test('Job has created_at', () => pm.expect(job.created_at).to.be.a('string'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 — Single Job (Premium user)",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"id\": 1,\n  \"title\": \"Senior Python Engineer\",\n  \"description\": \"We are looking for an experienced Python engineer to join our platform team that handles millions of requests daily.\",\n  \"location\": \"San Francisco, CA\",\n  \"company_name\": \"Anthropic\",\n  \"salary_range\": \"$160,000 – $220,000\",\n  \"application_link\": \"https://example.com/jobs/1\",\n  \"created_at\": \"2026-03-27T12:00:00Z\"\n}",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "200 — Single Job (Unauthenticated)",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"id\": 1,\n  \"title\": \"Senior Python Engineer\",\n  \"description\": \"We are looking for an experienced Python engineer to join our platform team that handles millions of requests daily.\",\n  \"location\": \"San Francisco, CA\",\n  \"company_name\": \"🔒 Premium Feature\",\n  \"salary_range\": \"🔒 Premium Feature\",\n  \"application_link\": \"🔒 Premium Feature\",\n  \"created_at\": \"2026-03-27T12:00:00Z\"\n}",
+          "_postman_previewlanguage": "json"
+        },
+        {
+          "name": "404 — Not Found",
+          "status": "Not Found",
+          "code": 404,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"detail\": \"No JobPosting matches the given query.\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    },
+    {
+      "name": "5. Auth — Refresh Access Token",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": {
+          "raw": "{{base_url}}/api/token/refresh/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "token", "refresh", ""]
+        },
+        "description": "Uses the refresh token to obtain a new access token without re-authenticating.\n\nBecause `ROTATE_REFRESH_TOKENS = True` and `BLACKLIST_AFTER_ROTATION = True` in settings, each refresh also rotates and blacklists the old refresh token."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.access) pm.collectionVariables.set('access_token', json.access);",
+              "if (json.refresh) pm.collectionVariables.set('refresh_token', json.refresh);",
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "6. Me — Current User Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/me/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "me", ""]
+        },
+        "description": "Returns the authenticated user's membership tier.\n\n**Expected response (200 OK):**\n```json\n{\n  \"id\": 2,\n  \"username\": \"premium_user\",\n  \"email\": \"premium@example.com\",\n  \"membership_type\": \"Premium\"\n}\n```\n\nReturns `401` if no valid token is supplied."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Has membership_type', () => pm.expect(json.membership_type).to.be.oneOf(['Basic', 'Premium']));"
+            ]
+          }
+        }
+      ],
+      "response": [
+        {
+          "name": "200 — Premium User",
+          "status": "OK",
+          "code": 200,
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": "{\n  \"id\": 2,\n  \"username\": \"premium_user\",\n  \"email\": \"premium@example.com\",\n  \"membership_type\": \"Premium\"\n}",
+          "_postman_previewlanguage": "json"
+        }
+      ]
+    }
+  ]
+}
